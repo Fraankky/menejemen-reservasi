@@ -2,132 +2,136 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
+import bcrypt from "bcryptjs";
 
 const AdminLogin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
 
-    try {
-      // Query admin by username
-      const { data: admin, error } = await supabase
-        .from("admin")
-        .select("*")
-        .eq("username", username)
-        .single();
 
-      if (error || !admin) {
-        toast({
-          title: "Login Gagal",
-          description: "Username atau password salah",
-          variant: "destructive",
-        });
-        return;
-      }
+const handleLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoading(true);
 
-      // For demo purposes, we're doing a simple comparison
-      // In production, use proper password hashing (bcrypt)
-      // For now, we'll just check if password matches
-      if (password === "admin123") {
-        // Store admin session in localStorage
-        localStorage.setItem("admin_session", JSON.stringify({
-          id: admin.id_admin,
-          username: admin.username,
-          role: admin.role,
-        }));
+  try {
+    const { data: adminData, error: adminError } = await supabase
+      .from("admin")
+      .select("*")
+      .eq("username", username)
+      .single();
 
-        toast({
-          title: "Login Berhasil",
-          description: `Selamat datang, ${admin.nama}`,
-        });
-
-        navigate("/admin/dashboard");
-      } else {
-        toast({
-          title: "Login Gagal",
-          description: "Username atau password salah",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+    if (adminError || !adminData) {
       toast({
-        title: "Error",
-        description: "Terjadi kesalahan saat login",
+        title: "Login Gagal",
+        description: "Username atau password salah",
         variant: "destructive",
       });
-
-      console.error("Login error:", error);
-    } finally {
-      setIsLoading(false);
+      setLoading(false);
+      return;
     }
-  };
+
+    const isValid = await bcrypt.compare(password, adminData.password_hash);
+
+    if (!isValid) {
+      toast({
+        title: "Login Gagal",
+        description: "Username atau password salah",
+        variant: "destructive",
+      });
+      setLoading(false);
+      return;
+    }
+
+    localStorage.setItem("adminToken", adminData.id_admin);
+    localStorage.setItem("adminRole", adminData.role);
+    localStorage.setItem("adminUsername", adminData.username);
+
+    toast({
+      title: "Login Berhasil",
+      description: `Selamat datang, ${adminData.nama}`,
+    });
+
+    navigate("/admin/dashboard");
+  } catch (error) {
+    console.error("Login error:", error);
+    toast({
+      title: "Error",
+      description: "Terjadi kesalahan saat login",
+      variant: "destructive",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
-    <div className="min-h-screen bg-background py-8 px-4">
-      <div className="container mx-auto max-w-md">
-        <Button variant="ghost" onClick={() => navigate("/")} className="mb-6">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Kembali
-        </Button>
-
-        <Card className="p-8">
-          <div className="mb-6 text-center">
-            <h1 className="text-3xl font-bold">Admin Login</h1>
-            <p className="mt-2 text-muted-foreground">
-              Akses Dashboard Admin
-            </p>
-          </div>
-
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-700 via-gray-800 to-black p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold text-center">Admin Login</CardTitle>
+          <CardDescription className="text-center">
+            Masukkan username dan password untuk mengakses dashboard
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <Label htmlFor="username">Username</Label>
+            <div className="space-y-2">
+              <label htmlFor="username" className="text-sm font-medium">
+                Username
+              </label>
               <Input
                 id="username"
                 type="text"
+                placeholder="Masukkan username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
+                disabled={loading}
               />
             </div>
-
-            <div>
-              <Label htmlFor="password">Password</Label>
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium">
+                Password
+              </label>
               <Input
                 id="password"
                 type="password"
+                placeholder="Masukkan password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={loading}
               />
             </div>
-
             <Button
               type="submit"
               className="w-full"
-              size="lg"
-              disabled={isLoading}
+              disabled={loading}
             >
-              <LogIn className="mr-2 h-4 w-4" />
-              {isLoading ? "Memproses..." : "Login"}
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Memproses...
+                </>
+              ) : (
+                <>
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Login
+                </>
+              )}
             </Button>
           </form>
-
-          <div className="mt-4 text-center text-sm text-muted-foreground">
-            <p>Demo: username = admin, password = admin123</p>
-          </div>
-        </Card>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

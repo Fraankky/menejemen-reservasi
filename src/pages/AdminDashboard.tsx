@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -6,8 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { LogOut, CheckCircle, XCircle, Eye } from "lucide-react";
 import { format } from "date-fns";
@@ -17,31 +29,45 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [adminSession, setAdminSession] = useState<any>(null);
-  const [filterStatus, setFilterStatus] = useState<"all" | "MENUNGGU" | "TERKONFIRMASI" | "DITOLAK" | "DIBATALKAN">("all");
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<
+    "all" | "MENUNGGU" | "TERKONFIRMASI" | "DITOLAK" | "DIBATALKAN"
+  >("all");
   const [searchTerm, setSearchTerm] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedReservasi, setSelectedReservasi] = useState<any>(null);
 
+  // 🔐 Cek login dari localStorage (bukan Supabase Auth)
   useEffect(() => {
-    const session = localStorage.getItem("admin_session");
-    if (!session) {
+    const adminToken = localStorage.getItem("adminToken");
+    const adminUsername = localStorage.getItem("adminUsername");
+
+    if (!adminToken) {
+      // Belum login → lempar ke halaman login admin
       navigate("/admin/login");
-    } else {
-      setAdminSession(JSON.parse(session));
+      return;
     }
+
+    setUserId(adminToken);
+    setUserEmail(adminUsername || "");
   }, [navigate]);
 
+  // 📊 Ambil data reservasi
   const { data: reservations } = useQuery({
     queryKey: ["admin-reservations", filterStatus, searchTerm],
     queryFn: async () => {
       let query = supabase
         .from("reservasi")
-        .select(`
+        .select(
+          `
           *,
           penyewa(*),
           lapangan(*),
           pembayaran(*)
-        `)
+        `
+        )
         .order("created_at", { ascending: false });
 
       if (filterStatus !== "all") {
@@ -49,21 +75,24 @@ const AdminDashboard = () => {
       }
 
       if (searchTerm) {
-        query = query.or(`kode_booking.ilike.%${searchTerm}%,penyewa.nama.ilike.%${searchTerm}%`);
+        query = query.or(
+          `kode_booking.ilike.%${searchTerm}%,penyewa.nama.ilike.%${searchTerm}%`
+        );
       }
 
       const { data, error } = await query;
       if (error) throw error;
       return data;
     },
-    enabled: !!adminSession,
+    enabled: !!userId,
   });
 
+  // 📈 Statistik singkat
   const { data: stats } = useQuery({
     queryKey: ["admin-stats"],
     queryFn: async () => {
       const today = format(new Date(), "yyyy-MM-dd");
-      
+
       const { data: todayReservations } = await supabase
         .from("reservasi")
         .select("*")
@@ -79,11 +108,18 @@ const AdminDashboard = () => {
         pendingCount: pendingReservations?.length || 0,
       };
     },
-    enabled: !!adminSession,
+    enabled: !!userId,
   });
 
+  // ✅ Update status reservasi + update status_verifikasi pembayaran
   const updateReservasiMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: "MENUNGGU" | "TERKONFIRMASI" | "DITOLAK" | "DIBATALKAN" }) => {
+    mutationFn: async ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: "MENUNGGU" | "TERKONFIRMASI" | "DITOLAK" | "DIBATALKAN";
+    }) => {
       const { error } = await supabase
         .from("reservasi")
         .update({ status })
@@ -91,7 +127,7 @@ const AdminDashboard = () => {
 
       if (error) throw error;
 
-      // Update pembayaran status if confirming
+      // Kalau dikonfirmasi, set pembayaran jadi VALID
       if (status === "TERKONFIRMASI") {
         const { data: pembayaran } = await supabase
           .from("pembayaran")
@@ -102,9 +138,8 @@ const AdminDashboard = () => {
         if (pembayaran) {
           await supabase
             .from("pembayaran")
-            .update({ 
+            .update({
               status_verifikasi: "VALID",
-              id_admin: adminSession.id
             })
             .eq("id_pembayaran", pembayaran.id_pembayaran);
         }
@@ -128,8 +163,11 @@ const AdminDashboard = () => {
     },
   });
 
+  // 🚪 Logout versi custom admin (bersihkan localStorage)
   const handleLogout = () => {
-    localStorage.removeItem("admin_session");
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("adminRole");
+    localStorage.removeItem("adminUsername");
     navigate("/admin/login");
   };
 
@@ -148,16 +186,17 @@ const AdminDashboard = () => {
     }
   };
 
-  if (!adminSession) return null;
+  if (!userId) return null;
 
   return (
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="container mx-auto max-w-7xl">
+        {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold">Dashboard Admin</h1>
             <p className="text-muted-foreground">
-              Selamat datang, {adminSession.username}
+              Selamat datang, {userEmail}
             </p>
           </div>
           <Button variant="outline" onClick={handleLogout}>
@@ -174,7 +213,9 @@ const AdminDashboard = () => {
           </Card>
           <Card className="p-6">
             <p className="text-sm text-muted-foreground">Menunggu Verifikasi</p>
-            <p className="text-3xl font-bold text-warning">{stats?.pendingCount || 0}</p>
+            <p className="text-3xl font-bold text-warning">
+              {stats?.pendingCount || 0}
+            </p>
           </Card>
         </div>
 
@@ -189,7 +230,12 @@ const AdminDashboard = () => {
                 className="w-full"
               />
             </div>
-            <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as typeof filterStatus)}>
+            <Select
+              value={filterStatus}
+              onValueChange={(value) =>
+                setFilterStatus(value as typeof filterStatus)
+              }
+            >
               <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Filter Status" />
               </SelectTrigger>
@@ -220,15 +266,21 @@ const AdminDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {reservations?.map((r) => (
+                {reservations?.map((r: any) => (
                   <tr key={r.id_reservasi} className="border-b">
-                    <td className="p-4 font-mono font-semibold">{r.kode_booking}</td>
-                    <td className="p-4">{r.penyewa.nama}</td>
-                    <td className="p-4">{r.lapangan.nama}</td>
-                    <td className="p-4">
-                      {format(new Date(r.tanggal), "dd MMM yyyy", { locale: id })}
+                    <td className="p-4 font-mono font-semibold">
+                      {r.kode_booking}
                     </td>
-                    <td className="p-4">{r.jam_mulai} - {r.jam_selesai}</td>
+                    <td className="p-4">{r.penyewa?.nama}</td>
+                    <td className="p-4">{r.lapangan?.nama}</td>
+                    <td className="p-4">
+                      {format(new Date(r.tanggal), "dd MMM yyyy", {
+                        locale: id,
+                      })}
+                    </td>
+                    <td className="p-4">
+                      {r.jam_mulai} - {r.jam_selesai}
+                    </td>
                     <td className="p-4">{getStatusBadge(r.status)}</td>
                     <td className="p-4">
                       <Button
@@ -247,41 +299,65 @@ const AdminDashboard = () => {
         </Card>
 
         {/* Detail Dialog */}
-        <Dialog open={!!selectedReservasi} onOpenChange={() => setSelectedReservasi(null)}>
+        <Dialog
+          open={!!selectedReservasi}
+          onOpenChange={() => setSelectedReservasi(null)}
+        >
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Detail Reservasi</DialogTitle>
             </DialogHeader>
-            
+
             {selectedReservasi && (
               <div className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <p className="text-sm text-muted-foreground">Kode Booking</p>
-                    <p className="font-mono font-semibold">{selectedReservasi.kode_booking}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Kode Booking
+                    </p>
+                    <p className="font-mono font-semibold">
+                      {selectedReservasi.kode_booking}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Status</p>
                     {getStatusBadge(selectedReservasi.status)}
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Nama Penyewa</p>
-                    <p className="font-semibold">{selectedReservasi.penyewa.nama}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Nama Penyewa
+                    </p>
+                    <p className="font-semibold">
+                      {selectedReservasi.penyewa?.nama}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">No. Telepon</p>
-                    <p className="font-semibold">{selectedReservasi.penyewa.no_telepon}</p>
+                    <p className="text-sm text-muted-foreground">
+                      No. Telepon
+                    </p>
+                    <p className="font-semibold">
+                      {selectedReservasi.penyewa?.no_telepon}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Lapangan</p>
-                    <p className="font-semibold">{selectedReservasi.lapangan.nama}</p>
+                    <p className="font-semibold">
+                      {selectedReservasi.lapangan?.nama}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Tanggal & Jam</p>
+                    <p className="text-sm text-muted-foreground">
+                      Tanggal & Jam
+                    </p>
                     <p className="font-semibold">
-                      {format(new Date(selectedReservasi.tanggal), "dd MMM yyyy", { locale: id })}
+                      {format(
+                        new Date(selectedReservasi.tanggal),
+                        "dd MMM yyyy",
+                        { locale: id }
+                      )}
                       <br />
-                      {selectedReservasi.jam_mulai} - {selectedReservasi.jam_selesai}
+                      {selectedReservasi.jam_mulai} -{" "}
+                      {selectedReservasi.jam_selesai}
                     </p>
                   </div>
                 </div>
@@ -289,7 +365,12 @@ const AdminDashboard = () => {
                 {selectedReservasi.pembayaran?.[0] && (
                   <div className="rounded-lg border p-4">
                     <p className="mb-2 font-semibold">Pembayaran</p>
-                    <p>Total: Rp {selectedReservasi.pembayaran[0].jumlah.toLocaleString("id-ID")}</p>
+                    <p>
+                      Total: Rp{" "}
+                      {selectedReservasi.pembayaran[0].jumlah.toLocaleString(
+                        "id-ID"
+                      )}
+                    </p>
                     {selectedReservasi.pembayaran[0].bukti_url && (
                       <div className="mt-2">
                         <a

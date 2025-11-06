@@ -1,14 +1,50 @@
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, MapPin, CheckCircle } from "lucide-react";
+import { Calendar, Clock, MapPin, CheckCircle, LogIn, LayoutDashboard } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const Index = () => {
   const navigate = useNavigate();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // Cek status login saat component mount
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken');
+    setIsLoggedIn(!!token);
+  }, []);
+
+  const handleAuthClick = () => {
+    if (isLoggedIn) {
+      navigate('/admin/dashboard');
+    } else {
+      navigate('/admin/login');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-gray-700 via-gray-800 to-black py-20 px-4">
+        {/* Button Login/Dashboard di pojok kanan atas */}
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={handleAuthClick}
+            className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg backdrop-blur-sm border border-white/20 transition-all duration-300 shadow-lg hover:shadow-xl"
+          >
+            {isLoggedIn ? (
+              <>
+                <LayoutDashboard className="h-5 w-5" />
+                <span className="font-medium">Dashboard</span>
+              </>
+            ) : (
+              <>
+                <LogIn className="h-5 w-5" />
+                <span className="font-medium">Admin Login</span>
+              </>
+            )}
+          </button>
+        </div>
+
         <div className="container mx-auto max-w-6xl">
           <div className="text-center text-white">
             <h1 className="mb-6 text-5xl font-bold leading-tight md:text-6xl">
@@ -20,7 +56,7 @@ const Index = () => {
             <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
               <Button 
                 size="lg" 
-                className="bg-accent hover:bg-accent-hover text-lg shadow-lg"
+                className="bg-blue-600 hover:bg-blue-700 text-lg shadow-lg"
                 onClick={() => navigate("/schedule")}
               >
                 <Calendar className="mr-2 h-5 w-5" />
@@ -79,10 +115,10 @@ const Index = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="bg-gradient-to-br from-gray-700 via-gray-800 to-black py-16 px-4 ">
+      <section className="bg-gradient-to-br from-gray-700 via-gray-800 to-black py-16 px-4">
         <div className="container mx-auto max-w-4xl text-center">
           <h2 className="mb-4 text-3xl font-bold text-white">Siap untuk Bermain?</h2>
-          <p className="mb-8 text-xl text-muted-foreground text-gray-40">
+          <p className="mb-8 text-xl text-gray-400">
             Lihat jadwal dan booking lapangan favoritmu sekarang!
           </p>
           <Button 
